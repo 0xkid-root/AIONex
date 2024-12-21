@@ -1,9 +1,6 @@
 import { createContext, useContext, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { toast } from '@/components/ui/toast';
 import { UserProfile } from '../types/user';
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core';
-import { useAccount, useBalance, useDisconnect, useChainId } from 'wagmi';
 
 interface WalletContextType {
   isConnected: boolean;
@@ -17,30 +14,38 @@ interface WalletContextType {
 
 const WalletContext = createContext<WalletContextType | null>(null);
 
-export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate();
-  const { primaryWallet, handleLogOut } = useDynamicContext();
-  const { address: wagmiAddress, isConnected } = useAccount();
-  const chainId = useChainId();
-  const { disconnect: wagmiDisconnect } = useDisconnect();
-  
+interface WalletProviderProps {
+  children: React.ReactNode;
+  navigate: (path: string) => void;
+  primaryWallet: any; // Replace `any` with the correct type from `DynamicContext`
+  handleLogOut: () => Promise<void>;
+  isConnected: boolean;
+  address: string | null;
+  balance: string | null;
+  chainId: number | null;
+  disconnect: () => void;
+}
+
+export function WalletProvider({
+  children,
+  navigate,
+  primaryWallet,
+  handleLogOut,
+  isConnected,
+  address,
+  balance,
+  chainId,
+  disconnect,
+}: WalletProviderProps) {
   const [user] = useState<UserProfile | null>(null);
 
-  // Get balance using Wagmi hook
-  const { data: balanceData } = useBalance({
-    address: wagmiAddress,
-  });
-
-  // Format balance to maintain compatibility with previous implementation
-  const formattedBalance = balanceData ? balanceData.formatted : null;
-
   // Handle disconnection
-  const disconnect = async () => {
+  const handleDisconnect = async () => {
     try {
       await handleLogOut();
-      wagmiDisconnect();
+      disconnect();
       navigate('/');
-      
+
       toast({
         title: "Success",
         description: "Wallet disconnected",
@@ -60,9 +65,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const switchNetwork = async (targetChainId: number) => {
     try {
       if (!primaryWallet) return;
-      
+
       await primaryWallet.switchNetwork(targetChainId);
-      
+
       toast({
         title: "Success",
         description: "Network switched successfully",
@@ -81,11 +86,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   return (
     <WalletContext.Provider value={{
       isConnected,
-      address: wagmiAddress ?? null,
-      balance: formattedBalance,
-      chainId: chainId ?? null,
+      address,
+      balance,
+      chainId,
       user,
-      disconnect,
+      disconnect: handleDisconnect,
       switchNetwork,
     }}>
       {children}
