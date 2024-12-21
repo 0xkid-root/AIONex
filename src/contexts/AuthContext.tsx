@@ -1,110 +1,172 @@
-import { createContext, useContext, useCallback, useEffect } from 'react';
+import { createContext, useContext, useCallback, useEffect, useState } from 'react';
 import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi';
 import { useNavigate } from 'react-router-dom';
-import { UserProfile } from '@/types/user';
-import { useToast } from '@/hooks/useToast';
+import { UserProfile } from '../types/user';
+import { useToast } from '../hooks/use-toast';
+import { SiweMessage } from 'siwe';
+import { injected } from '@wagmi/connectors';
+import type { Config } from '@wagmi/core';
 
 interface AuthContextType {
+  user: UserProfile | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  user: UserProfile | null;
-  error: Error | null;
-  login: () => Promise<void>;
-  logout: () => Promise<void>;
-  signMessage: (message: string) => Promise<string>;
+  signIn: () => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate();
-  const { toast } = useToast();
-  
-  const { 
-    address, 
-    isConnected, 
-    isConnecting,
-    status 
-  } = useAccount();
-
-  const {
-    connect,
-    connectors: [connector],
-    error: connectError,
-    isLoading: isConnectLoading,
-  } = useConnect();
-
-  const { disconnect } = useDisconnect();
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const { address, isConnected } = useAccount();
+  const { connectAsync } = useConnect();
+  const { disconnectAsync } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
+  const { toast } = useToast();
+  const navigate = useNavigate();
 
-  const login = useCallback(async () => {
+  const getNonce = async () => {
     try {
+      const response = await fetch('/api/auth/nonce');
+      const data = await response.json();
+      return data.nonce;
+    } catch (error) {
+      console.error('Failed to get nonce:', error);
+      throw error;
+    }
+  };
+
+  const verifySignature = async (message: SiweMessage, signature: string) => {
+    try {
+      const response = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message, signature }),
+      });
+
+      if (!response.ok) throw new Error('Failed to verify signature');
+
+      const data = await response.json();
+      return data.user;
+    } catch (error) {
+      console.error('Failed to verify signature:', error);
+      throw error;
+    }
+  };
+
+  const signIn = useCallback(async () => {
+    try {
+      setIsLoading(true);
+
+      // Connect wallet if not connected
+      // Connect wallet if not connected
       if (!isConnected) {
-        await connect({ connector });
+        await connectAsync({
+          connector: injected()
+        });
       }
 
-      // Get nonce from backend
-      const nonceResponse = await fetch('/api/auth/nonce');
-      const { nonce } = await nonceResponse.json();
+      if (!address) throw new Error('No wallet address');
+
+      // Get nonce
+      const nonce = await getNonce();
+
+      // Create SIWE message
+      const message = new SiweMessage({
+        domain: window.location.host,
+        address,
+        statement: 'Sign in with Ethereum to AIONex',
+        uri: window.location.origin,
+        version: '1',
+        chainId: 1,
+        nonce,
+      });
 
       // Sign message
       const signature = await signMessageAsync({
-        message: `Sign this message to verify your identity. Nonce: ${nonce}`,
+        message: message.prepareMessage(),
       });
 
-      // Verify signature with backend
-      const verifyResponse = await fetch('/api/auth/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, signature, nonce }),
-      });
-
-      if (!verifyResponse.ok) {
-        throw new Error('Failed to verify signature');
-      }
-
-      const { user, token } = await verifyResponse.json();
-      
-      // Store auth token
-      localStorage.setItem('auth_token', token);
+      // Verify signature
+      const userData = await verifySignature(message, signature);
+      setUser(userData);
 
       toast({
         title: 'Success',
-        description: 'Successfully logged in',
-        variant: 'success',
+        description: 'Successfully signed in',
       });
 
       navigate('/dashboard');
-    } catch (error: any) {
+    } catch (error) {
+      console.error('Failed to sign in:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to login',
+        description: 'Failed to sign in',
         variant: 'destructive',
       });
-      throw error;
+    } finally {
+      setIsLoading(false);
     }
-  }, [isConnected, connect, connector, signMessageAsync, address, navigate, toast]);
+  }, [address, isConnected, connectAsync, signMessageAsync, navigate, toast]);
 
-  const logout = useCallback(async () => {
-    disconnect();
-    localStorage.removeItem('auth_token');
-    navigate('/');
-  }, [disconnect, navigate]);
+  const signOut = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      await disconnectAsync();
+      setUser(null);
 
-  const signMessage = useCallback(async (message: string) => {
-    return await signMessageAsync({ message });
-  }, [signMessageAsync]);
+      await fetch('/api/auth/signout', {
+        method: 'POST',
+      });
+
+      toast({
+        title: 'Success',
+        description: 'Successfully signed out',
+      });
+
+      navigate('/');
+    } catch (error) {
+      console.error('Failed to sign out:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to sign out',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [disconnectAsync, navigate, toast]);
+
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const response = await fetch('/api/auth/session');
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+        }
+      } catch (error) {
+        console.error('Failed to check session:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkSession();
+  }, []);
 
   return (
     <AuthContext.Provider
       value={{
-        isAuthenticated: isConnected,
-        isLoading: isConnecting || isConnectLoading,
-        user: null, // Implement user state management
-        error: connectError,
-        login,
-        logout,
-        signMessage,
+        user,
+        isAuthenticated: !!user,
+        isLoading,
+        signIn,
+        signOut,
       }}
     >
       {children}
@@ -112,10 +174,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}; 
+}

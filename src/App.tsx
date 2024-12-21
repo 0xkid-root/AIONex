@@ -1,4 +1,6 @@
-import { WagmiConfig } from 'wagmi';
+// import { WagmiConfig } from 'wagmi';
+import { WagmiProvider } from 'wagmi'
+
 import { config } from '@/lib/wagmi';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -8,7 +10,7 @@ import { ToastProvider } from '@/components/ui/toast';
 
 export default function App() {
   return (
-    <WagmiConfig config={config}>
+    <WagmiProvider config={config}>
       <BrowserRouter>
         <ToastProvider>
           <AuthProvider>
@@ -18,6 +20,6 @@ export default function App() {
           </AuthProvider>
         </ToastProvider>
       </BrowserRouter>
-    </WagmiConfig>
+    </WagmiProvider>
   );
 }

@@ -8,6 +8,7 @@ import { Marketplace } from '@/pages/Marketplace';
 import { AIWorkspace } from '@/pages/AIWorkspace';
 import { ProviderDashboard } from '@/pages/ProviderDashboard';
 import { ModelDetailsPage } from '@/pages/ModelDetailsPage';
+import { WalletPage } from '@/pages/WalletPage';
 
 export function Routes() {
   return (
@@ -55,6 +56,14 @@ export function Routes() {
           </ProtectedRoute>
         } 
       />
+      <Route 
+        path="/wallet" 
+        element={
+          <ProtectedRoute>
+            <WalletPage />
+          </ProtectedRoute>
+        } 
+      />
     </RouterRoutes>
   );
-} 
+}

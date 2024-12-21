@@ -1,6 +1,8 @@
 import { mainnet, sepolia } from 'wagmi/chains';
 import { createConfig } from 'wagmi';
 import { metaMask, walletConnect, injected } from 'wagmi/connectors';
+import { usePublicClient } from 'wagmi'
+
 
 // Configure chains with providers
 const chains = [mainnet, sepolia];
@@ -15,9 +17,7 @@ export const config = createConfig({
     metaMask(),
     walletConnect({
       chains,
-      options: {
-        projectId: process.env.VITE_WALLET_CONNECT_PROJECT_ID!, // Ensure this is set in your .env file
-      },
+
     }),
   ],
   publicClient,
