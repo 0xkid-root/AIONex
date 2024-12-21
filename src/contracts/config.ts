@@ -26,11 +26,11 @@ const AgentRentalABI: ContractInterface = [
 
 // Contract Addresses (to be updated with actual deployed addresses)
 export const CONTRACT_ADDRESSES = {
-  BASE: process.env.NEXT_PUBLIC_BASE_CONTRACT || '0x...',
-  MARKETPLACE: process.env.NEXT_PUBLIC_MARKETPLACE_CONTRACT || '0x...',
-  AGENT_RENTAL: process.env.NEXT_PUBLIC_AGENT_RENTAL_CONTRACT || '0x...',
-  STAKING: process.env.NEXT_PUBLIC_STAKING_CONTRACT || '0x...',
-  WORKFLOW: process.env.NEXT_PUBLIC_WORKFLOW_CONTRACT || '0x...'
+  BASE: import.meta.env.NEXT_PUBLIC_BASE_CONTRACT || '0x...',
+  MARKETPLACE: import.meta.env.NEXT_PUBLIC_MARKETPLACE_CONTRACT || '0x...',
+  AGENT_RENTAL: import.meta.env.NEXT_PUBLIC_AGENT_RENTAL_CONTRACT || '0x...',
+  STAKING: import.meta.env.NEXT_PUBLIC_STAKING_CONTRACT || '0x...',
+  WORKFLOW: import.meta.env.NEXT_PUBLIC_WORKFLOW_CONTRACT || '0x...'
 };
 
 // Contract ABIs

@@ -1,14 +1,13 @@
-import { createContext, useContext, useCallback, useEffect } from 'react';
-import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi';
+import { createContext, useContext, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '@/types/user';
 import { useToast } from '@/hooks/useToast';
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core';
+import { useAccount, useSignMessage } from 'wagmi';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  isLoading: boolean;
   user: UserProfile | null;
-  error: Error | null;
   login: () => Promise<void>;
   logout: () => Promise<void>;
   signMessage: (message: string) => Promise<string>;
@@ -19,28 +18,16 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const { toast } = useToast();
-  
-  const { 
-    address, 
-    isConnected, 
-    isConnecting,
-    status 
-  } = useAccount();
-
-  const {
-    connect,
-    connectors: [connector],
-    error: connectError,
-    isLoading: isConnectLoading,
-  } = useConnect();
-
-  const { disconnect } = useDisconnect();
+  const { handleLogOut } = useDynamicContext();
+  const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
+  
+  const [user, setUser] = useState<UserProfile | null>(null);
 
   const login = useCallback(async () => {
     try {
-      if (!isConnected) {
-        await connect({ connector });
+      if (!address) {
+        throw new Error('No wallet connected');
       }
 
       // Get nonce from backend
@@ -56,17 +43,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const verifyResponse = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, signature, nonce }),
+        body: JSON.stringify({
+          address,
+          signature,
+          nonce
+        }),
       });
 
       if (!verifyResponse.ok) {
         throw new Error('Failed to verify signature');
       }
 
-      const { user, token } = await verifyResponse.json();
-      
-      // Store auth token
+      const { user: userData, token } = await verifyResponse.json();
+
+      // Store auth token and user data
       localStorage.setItem('auth_token', token);
+      setUser(userData);
 
       toast({
         title: 'Success',
@@ -83,25 +75,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       throw error;
     }
-  }, [isConnected, connect, connector, signMessageAsync, address, navigate, toast]);
+  }, [address, signMessageAsync, navigate, toast]);
 
   const logout = useCallback(async () => {
-    disconnect();
-    localStorage.removeItem('auth_token');
-    navigate('/');
-  }, [disconnect, navigate]);
+    try {
+      await handleLogOut();
+      localStorage.removeItem('auth_token');
+      setUser(null);
+      navigate('/');
+      
+      toast({
+        title: 'Success',
+        description: 'Successfully logged out',
+        variant: 'success',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to logout',
+        variant: 'destructive',
+      });
+    }
+  }, [handleLogOut, navigate, toast]);
 
   const signMessage = useCallback(async (message: string) => {
+    if (!address) {
+      throw new Error('No wallet connected');
+    }
     return await signMessageAsync({ message });
-  }, [signMessageAsync]);
+  }, [address, signMessageAsync]);
 
   return (
     <AuthContext.Provider
       value={{
-        isAuthenticated: isConnected,
-        isLoading: isConnecting || isConnectLoading,
-        user: null, // Implement user state management
-        error: connectError,
+        isAuthenticated: isConnected && !!user,
+        user,
         login,
         logout,
         signMessage,
@@ -118,4 +126,4 @@ export const useAuth = () => {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}; 
+};

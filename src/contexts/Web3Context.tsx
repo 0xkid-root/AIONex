@@ -1,52 +1,61 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { ethers } from 'ethers';
+import { createContext, useContext } from 'react';
 import { useStore } from '@/store/useStore';
+import { toast } from '@/components/ui/toast';
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core';
+import { useAccount, useChainId, useDisconnect } from 'wagmi';
 
 interface Web3ContextType {
-  provider: ethers.providers.Web3Provider | null;
-  signer: ethers.Signer | null;
-  connect: () => Promise<void>;
+  isConnected: boolean;
   disconnect: () => void;
 }
 
 const Web3Context = createContext<Web3ContextType | null>(null);
 
 export function Web3Provider({ children }: { children: React.ReactNode }) {
-  const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
-  const [signer, setSigner] = useState<ethers.Signer | null>(null);
+  const { handleLogOut } = useDynamicContext();
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { disconnect: wagmiDisconnect } = useDisconnect();
+  
   const { setAccount, setChainId } = useStore();
 
-  useEffect(() => {
-    if (window.ethereum) {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      setProvider(provider);
-    }
-  }, []);
+  // Update store when account or chainId changes
+  if (address && isConnected) {
+    setAccount(address);
+    setChainId(chainId);
+  }
 
-  const connect = async () => {
-    if (provider) {
-      try {
-        await window.ethereum.request({ method: 'eth_requestAccounts' });
-        const signer = provider.getSigner();
-        setSigner(signer);
-        const address = await signer.getAddress();
-        const { chainId } = await provider.getNetwork();
-        setAccount(address);
-        setChainId(chainId);
-      } catch (error) {
-        console.error('Failed to connect:', error);
-      }
-    }
-  };
+  const disconnect = async () => {
+    try {
+      await handleLogOut();
+      wagmiDisconnect();
+      
+      // Clear store
+      setAccount(null);
+      setChainId(null);
 
-  const disconnect = () => {
-    setSigner(null);
-    setAccount(null);
-    setChainId(null);
+      toast({
+        title: "Success",
+        description: "Wallet disconnected",
+        variant: "success",
+      });
+    } catch (error: any) {
+      console.error('Failed to disconnect:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to disconnect",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
-    <Web3Context.Provider value={{ provider, signer, connect, disconnect }}>
+    <Web3Context.Provider 
+      value={{ 
+        isConnected,
+        disconnect
+      }}
+    >
       {children}
     </Web3Context.Provider>
   );
@@ -54,6 +63,8 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
 
 export const useWeb3 = () => {
   const context = useContext(Web3Context);
-  if (!context) throw new Error('useWeb3 must be used within a Web3Provider');
+  if (!context) {
+    throw new Error('useWeb3 must be used within a Web3Provider');
+  }
   return context;
-}; 
+};
